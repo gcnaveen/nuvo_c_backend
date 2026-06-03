@@ -23,6 +23,8 @@ class LocationStore {
 public:
     void update(const std::string& id, double lat, double lng, const std::string& timestamp);
     bool get(const std::string& id, Location& loc);
+    int getActiveEmployeeCount() const;
+    void cleanup(int maxAgeSeconds = 86400);  // Remove stale data after 24h
 
 private:
     std::unordered_map<std::string, Location> data_;

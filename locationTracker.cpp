@@ -1,6 +1,8 @@
 #include "locationTracker.h"
 #include <iostream>
 #include <ctime>
+#include <iomanip>
+#include <sstream>
 
 // ============ LocationStore ============
 
@@ -15,6 +17,28 @@ bool LocationStore::get(const std::string& id, Location& loc) {
     if (it == data_.end()) return false;
     loc = it->second;
     return true;
+}
+
+int LocationStore::getActiveEmployeeCount() const {
+    std::shared_lock lock(mutex_);
+    return data_.size();
+}
+
+void LocationStore::cleanup(int maxAgeSeconds) {
+    std::unique_lock lock(mutex_);
+    std::time_t now = std::time(nullptr);
+    for (auto it = data_.begin(); it != data_.end();) {
+        std::tm tm_time = {};
+        std::istringstream ss(it->second.timestamp);
+        ss >> std::get_time(&tm_time, "%FT%TZ");
+        std::time_t entry_time = std::mktime(&tm_time);
+        
+        if (std::difftime(now, entry_time) > maxAgeSeconds) {
+            it = data_.erase(it);
+        } else {
+            ++it;
+        }
+    }
 }
 
 std::string current_time() {
@@ -55,7 +79,17 @@ void Session::handle_request(http::request<http::string_body>& req) {
             double lng = j["lng"];
 
             store_->update(id, lat, lng, current_time());
-            res.body() = R"({"status":"ok"})";
+            res.body() = R"({"status":"ok","message":"Location updated"})";
+
+        } else if (req.method() == http::verb::get && req.target() == "/api/stats") {
+            // Admin endpoint: check active employees & server stats
+            json stats_json = {
+                {"status", "ok"},
+                {"active_employees", store_->getActiveEmployeeCount()},
+                {"timestamp", current_time()},
+                {"version", "1.0"}
+            };
+            res.body() = stats_json.dump();
 
         } else if (req.method() == http::verb::get) {
             std::string target = std::string(req.target());
@@ -73,15 +107,15 @@ void Session::handle_request(http::request<http::string_body>& req) {
                     res.body() = j.dump();
                 } else {
                     res.result(http::status::not_found);
-                    res.body() = R"({"error":"not found"})";
+                    res.body() = R"({"error":"Employee location not found"})";
                 }
             } else {
                 res.result(http::status::not_found);
-                res.body() = R"({"error":"invalid endpoint"})";
+                res.body() = R"({"error":"Invalid endpoint"})";
             }
         } else {
             res.result(http::status::not_found);
-            res.body() = R"({"error":"invalid endpoint"})";
+            res.body() = R"({"error":"Endpoint not found"})";
         }
     } catch (const std::exception& e) {
         res.result(http::status::bad_request);

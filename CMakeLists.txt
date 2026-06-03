@@ -10,4 +10,11 @@ add_executable(location_tracker
 )
 
 target_include_directories(location_tracker PRIVATE . boost)
-target_link_libraries(location_tracker PRIVATE ws2_32 mswsock)
+
+# Platform-specific libraries
+# ws2_32 & mswsock for Windows, pthread for Linux/Mac
+if(WIN32)
+    target_link_libraries(location_tracker PRIVATE ws2_32 mswsock)
+else()
+    target_link_libraries(location_tracker PRIVATE pthread)
+endif()
